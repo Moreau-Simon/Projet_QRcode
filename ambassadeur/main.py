@@ -1,28 +1,49 @@
-from fastapi import FastAPI, File, UploadFile
+from flask import Flask, request, jsonify
 import requests
 
-app = FastAPI()
+app = Flask(__name__)
 
-@app.post("/api/scan")
-async def route_scan(file: UploadFile = File(...)):
-    file_bytes = await file.read()
-    files = {'file': (file.filename, file_bytes, file.content_type)}
-    
+JOB_URL = "http://job-python:5000/scan"
+DATA_URL = "http://data-csharp:5000/api/save"
+TIMEOUT = 30  # secondes
+
+
+@app.route("/api/scan", methods=["POST"])
+def route_scan():
+    # Vérifier la présence du fichier envoyé par l'IHM
+    if "file" not in request.files:
+        return jsonify({"code": None, "error": "Aucun fichier envoyé"}), 400
+
+    file = request.files["file"]
+    files = {"file": (file.filename, file.read(), file.content_type)}
+
     try:
-        # Appel vers le conteneur Job Python (Flask sur le port 5000)
-        response = requests.post("http://job-python:5000/scan", files=files)
-        result = response.json()
-        
-        # Adaptation au format de réponse de votre script Flask
-        if result.get("status") == "success":
-            code_lu = result.get("data")
-            
-            # (Plus tard) Appel vers l'API C# :
-            # requests.post("http://data-csharp:5000/api/save", json={"valeur": code_lu})
-            
-            return {"code": code_lu, "status": "success"}
-        else:
-            return {"code": None, "error": result.get("message")}
-            
+        # 1. Envoi de l'image au Job Python (analyse / décodage)
+        job_response = requests.post(JOB_URL, files=files, timeout=TIMEOUT)
+        result = job_response.json()
+
+        if result.get("status") != "success":
+            # Aucun code trouvé : réponse 200 pour que l'IHM continue sa boucle de capture
+            return jsonify({"code": None, "error": result.get("message")}), 200
+
+        code_lu = result.get("data")
+
+        # 2. Envoi de la valeur lue au Dataware C# (Redis + PostgreSQL)
+        data_response = requests.post(DATA_URL, json={"valeur": code_lu}, timeout=TIMEOUT)
+
+        return jsonify({
+            "code": code_lu,
+            "type": result.get("type"),
+            "status": "success",
+            "database_info": data_response.json(),
+        }), 200
+
+    except requests.exceptions.RequestException as e:
+        # Un des services (Job ou DATA) est injoignable
+        return jsonify({"code": None, "error": f"Service injoignable : {e}"}), 502
     except Exception as e:
-        return {"code": None, "error": str(e)}
+        return jsonify({"code": None, "error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)

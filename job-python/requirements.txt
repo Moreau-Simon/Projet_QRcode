@@ -1,5 +1,5 @@
-fastapi
-uvicorn
-python-multipart
+Flask
 pyzbar
-Pillow
+opencv-python-headless
+numpy
+pillow

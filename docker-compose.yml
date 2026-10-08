@@ -1,38 +1,44 @@
-version: '3.8'
-
 services:
-  # 1. Frontend (Exposé sur le port 8080)
+  # 1. Frontend (exposé sur le port 8080)
   ihm:
-    build: ./ihm # Dossier contenant le Dockerfile IHM
+    build: ./ihm
     ports:
-      - "8080:80" # Redirige le port 8080 du Mac vers le port 80 du conteneur Nginx
+      - "8080:80" # port 8080 de l'hôte -> port 80 du conteneur Nginx
     depends_on:
       - ambassadeur
 
-  # 2. Routeur Python
+  # 2. Routeur Python (Flask, port interne 8000)
   ambassadeur:
-    build: ./ambassadeur # Dossier contenant le Dockerfile Ambassadeur
+    build: ./ambassadeur
     depends_on:
       - job-python
       - data-csharp
 
-  # 3. Traitement de l'image (Code-barre/QR)
+  # 3. Traitement de l'image (Flask, port interne 5000)
   job-python:
-    build: ./job-python # Dossier contenant le Dockerfile Job
+    build: ./job-python
 
-  # 4. Dataware C#
+  # 4. Dataware C# (ASP.NET, port interne 5000)
   data-csharp:
-    build: ./data-csharp # Dossier contenant le Dockerfile C#
+    build: ./data-csharp
+    restart: on-failure
     depends_on:
-      - redis
-      - psql
+      redis:
+        condition: service_healthy
+      psql:
+        condition: service_healthy
 
-  # 5. Base de données Cache (Image officielle, pas de Dockerfile requis)
+  # 5. Cache
   redis:
     image: redis:alpine
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # 6. Base de données Relationnelle (Image officielle, pas de Dockerfile requis)
+  # 6. Base relationnelle
   psql:
     image: postgres:15-alpine
     restart: always
@@ -40,3 +46,13 @@ services:
       POSTGRES_USER: mon_utilisateur
       POSTGRES_PASSWORD: mon_mot_de_passe
       POSTGRES_DB: ma_base_de_donnees
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mon_utilisateur -d ma_base_de_donnees"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
