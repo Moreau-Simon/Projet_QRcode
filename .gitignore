@@ -218,3 +218,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# =========================
+# C# / .NET
+# =========================
+
+# Dossiers de compilation (Très important)
+bin/
+obj/
+
+# Fichiers de l'IDE (Visual Studio, Rider, VS Code)
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Résultats de tests
+TestResults/
+
+# Configurations locales (pour éviter d'envoyer des mots de passe en clair sur Github)
+appsettings.Development.json
+appsettings.local.json

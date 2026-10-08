@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lecteur de QR code</title>
+    <link rel="stylesheet" href="style.css">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      const h = React.createElement;
+
+      function QrReader() {
+        const [mode, setMode] = React.useState("camera");
+        const [result, setResult] = React.useState("");
+        const [error, setError] = React.useState("");
+        const [running, setRunning] = React.useState(false);
+        const videoRef = React.useRef(null);
+        const streamRef = React.useRef(null);
+        const canvasRef = React.useRef(document.createElement("canvas"));
+
+        const stopCamera = React.useCallback(() => {
+          if (streamRef.current) streamRef.current.getTracks().forEach((track) => track.stop());
+          setRunning(false);
+        }, []);
+
+        // Nouvelle fonction : Envoie l'image au backend Python (Ambassadeur)
+        const sendToAPI = async (blob) => {
+          const formData = new FormData();
+          formData.append("file", blob, "scan.jpg");
+          try {
+            const response = await fetch("/api/scan", { method: "POST", body: formData });
+            if (!response.ok) throw new Error("Erreur serveur");
+            const data = await response.json();
+            if (data.code) {
+              setResult(data.code);
+              stopCamera();
+            }
+          } catch (err) {
+            setError("Impossible de joindre le serveur.");
+          }
+        };
+
+        const captureFrame = React.useCallback(() => {
+          if (!videoRef.current || videoRef.current.readyState < 2) return;
+          const canvas = canvasRef.current;
+          canvas.width = videoRef.current.videoWidth;
+          canvas.height = videoRef.current.videoHeight;
+          canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+          canvas.toBlob((blob) => { if (blob) sendToAPI(blob); }, "image/jpeg");
+        }, []);
+
+        // Boucle de capture toutes les 1.5 secondes
+        React.useEffect(() => {
+          if (!running) return;
+          const interval = setInterval(captureFrame, 1500);
+          return () => clearInterval(interval);
+        }, [running, captureFrame]);
+
+        const startCamera = async () => {
+          stopCamera(); setError(""); setResult("");
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            streamRef.current = stream;
+            if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+            setRunning(true);
+          } catch (err) { setError("Erreur caméra."); }
+        };
+
+        const readFile = (file) => {
+          if (!file) return;
+          stopCamera(); setResult(""); setError("Analyse en cours...");
+          sendToAPI(file);
+        };
+
+        return h("main", { className: "shell" },
+          h("section", { className: "app" },
+            h("h1", null, "Lecteur de QR code via Backend"),
+            h("div", { className: "panel" },
+              h("div", { className: "tabs" },
+                h("button", { className: "tab", onClick: () => { setMode("camera"); startCamera(); } }, "Caméra"),
+                h("button", { className: "tab", onClick: () => { setMode("image"); stopCamera(); } }, "Image")
+              ),
+              h("div", { className: "content" },
+                mode === "camera" ? h("div", null,
+                  h("video", { ref: videoRef, muted: true, playsInline: true, autoPlay: true, style: { width: "100%", display: running ? "block" : "none" } }),
+                  !running && h("button", { onClick: startCamera, className: "button primary" }, "Démarrer la caméra")
+                ) : h("input", { type: "file", accept: "image/*", onChange: (e) => readFile(e.target.files[0]) }),
+                error && h("p", { style: { color: "red" } }, error),
+                result && h("div", { className: "result" }, h("strong", null, "Résultat : "), result)
+              )
+            )
+          )
+        );
+      }
+      ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(QrReader));
+    </script>
+  </body>
+</html>

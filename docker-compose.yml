@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # 1. Frontend (Exposé sur le port 8080)
+  ihm:
+    build: ./ihm # Dossier contenant le Dockerfile IHM
+    ports:
+      - "8080:80" # Redirige le port 8080 du Mac vers le port 80 du conteneur Nginx
+    depends_on:
+      - ambassadeur
+
+  # 2. Routeur Python
+  ambassadeur:
+    build: ./ambassadeur # Dossier contenant le Dockerfile Ambassadeur
+    depends_on:
+      - job-python
+      - data-csharp
+
+  # 3. Traitement de l'image (Code-barre/QR)
+  job-python:
+    build: ./job-python # Dossier contenant le Dockerfile Job
+
+  # 4. Dataware C#
+  data-csharp:
+    build: ./data-csharp # Dossier contenant le Dockerfile C#
+    depends_on:
+      - redis
+      - psql
+
+  # 5. Base de données Cache (Image officielle, pas de Dockerfile requis)
+  redis:
+    image: redis:alpine
+    restart: always
+
+  # 6. Base de données Relationnelle (Image officielle, pas de Dockerfile requis)
+  psql:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: mon_utilisateur
+      POSTGRES_PASSWORD: mon_mot_de_passe
+      POSTGRES_DB: ma_base_de_donnees
