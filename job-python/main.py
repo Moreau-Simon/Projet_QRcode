@@ -5,7 +5,7 @@ import numpy as np
 
 app = Flask(__name__)
 
-def rotate_image(image, angle):
+def rotate_image(image, angle) :
     """Fait pivoter l'image selon un angle donné."""
     (h, w) = image.shape[:2]
     center = (w // 2, h // 2)
@@ -15,10 +15,10 @@ def rotate_image(image, angle):
     return cv2.warpAffine(image, M, (w, h))
 
 @app.route("/scan", methods=["POST"])
-def scan_barcode():
+def scan_barcode() :
     try:
         # Vérifier si un fichier est présent dans la requête
-        if 'file' not in request.files:
+        if 'file' not in request.files :
             return jsonify({"status": "error", "message": "Aucun fichier envoyé"}), 400
             
         file = request.files['file']
@@ -28,7 +28,7 @@ def scan_barcode():
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        if image is None:
+        if image is None :
             return jsonify({"status": "error", "message": "Format d'image invalide."}), 400
 
         # 1. Passage en niveaux de gris pour faciliter la détection
@@ -59,6 +59,6 @@ def scan_barcode():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-if __name__ == "__main__":
+if __name__ == "__main__" :
     # Flask tourne par défaut sur le port 5000
     app.run(host="0.0.0.0", port=5000)
