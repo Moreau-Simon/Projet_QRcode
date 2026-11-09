@@ -5,19 +5,28 @@ using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Configuration Redis (nom du service "redis" dans le docker-compose)
-var redisConfig = ConfigurationOptions.Parse("redis:6379");
+// 1. Configuration Redis dynamique via variables d'environnement
+var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "redis";
+var redisPort = Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379";
+var redisConfig = ConfigurationOptions.Parse($"{redisHost}:{redisPort}");
 redisConfig.AbortOnConnectFail = false; // Ne crashe pas si Redis met quelques secondes à démarrer
 var redis = ConnectionMultiplexer.Connect(redisConfig);
 builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
 
-// 2. Configuration PostgreSQL (nom du service "psql" dans le docker-compose)
-var pgConnString = "Host=psql;Username=mon_utilisateur;Password=mon_mot_de_passe;Database=ma_base_de_donnees";
+// 2. Configuration PostgreSQL dynamique via variables d'environnement (utilisateur dédié non-root)
+var psqlHost = Environment.GetEnvironmentVariable("PSQL_HOST") ?? "psql";
+var psqlPort = Environment.GetEnvironmentVariable("PSQL_PORT") ?? "5432";
+var psqlDb = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "ma_base_de_donnees";
+var psqlUser = Environment.GetEnvironmentVariable("APP_DB_USER") ?? "data_user";
+var psqlPass = Environment.GetEnvironmentVariable("APP_DB_PASSWORD") ?? "data_secure_password";
+
+var pgConnString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
+    ?? $"Host={psqlHost};Port={psqlPort};Username={psqlUser};Password={psqlPass};Database={psqlDb}";
 builder.Services.AddScoped(_ => new NpgsqlConnection(pgConnString));
 
 var app = builder.Build();
 
-// 3. Initialisation de la base de données (Création de la table au démarrage)
+// 3. Initialisation de la base de données (Vérification / création de la table si nécessaire)
 using (var scope = app.Services.CreateScope())
 {
     var conn = scope.ServiceProvider.GetRequiredService<NpgsqlConnection>();

@@ -1,32 +1,53 @@
 services:
-  # 1. Frontend (exposé sur le port 8080)
+  # 1. Frontend & Reverse Proxy (exposé sur le port 8080)
   ihm:
     build: ./ihm
     ports:
       - "8080:80" # port 8080 de l'hôte -> port 80 du conteneur Nginx
     depends_on:
       - ambassadeur
+    networks:
+      - frontend-net
 
   # 2. Routeur Python (Flask, port interne 8000)
   ambassadeur:
     build: ./ambassadeur
+    environment:
+      - JOB_URL=${JOB_URL:-http://job-python:5000/scan}
+      - DATA_URL=${DATA_URL:-http://data-csharp:5000/api/save}
     depends_on:
       - job-python
       - data-csharp
+    networks:
+      - frontend-net
+      - backend-net
 
   # 3. Traitement de l'image (Flask, port interne 5000)
   job-python:
     build: ./job-python
+    networks:
+      - backend-net
 
   # 4. Dataware C# (ASP.NET, port interne 5000)
   data-csharp:
     build: ./data-csharp
     restart: on-failure
+    environment:
+      - PSQL_HOST=${PSQL_HOST:-psql}
+      - PSQL_PORT=${PSQL_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-ma_base_de_donnees}
+      - APP_DB_USER=${APP_DB_USER:-data_user}
+      - APP_DB_PASSWORD=${APP_DB_PASSWORD:-data_secure_password}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
     depends_on:
       redis:
         condition: service_healthy
       psql:
         condition: service_healthy
+    networks:
+      - backend-net
+      - data-net
 
   # 5. Cache
   redis:
@@ -37,22 +58,35 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - data-net
 
   # 6. Base relationnelle
   psql:
     image: postgres:15-alpine
     restart: on-failure
     environment:
-      POSTGRES_USER: mon_utilisateur
-      POSTGRES_PASSWORD: mon_mot_de_passe
-      POSTGRES_DB: ma_base_de_donnees
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-super_postgres_password_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-ma_base_de_donnees}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./init-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mon_utilisateur -d ma_base_de_donnees"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ma_base_de_donnees}"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - data-net
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+  data-net:
+    driver: bridge
 
 volumes:
   pgdata:

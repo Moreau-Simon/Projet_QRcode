@@ -4,7 +4,7 @@ Application conteneurisée basée sur une architecture micro-services en pipelin
 
 ---
 
-## 🏗️ Architecture du Projet
+## Architecture du Projet
 
 Le système est entièrement encapsulé dans une stack Docker orchestrée par `docker-compose`. La stack respecte une politique stricte d'isolation réseau : **seul le port 8080 est exposé sur la machine hôte**, servant de point d'entrée unique via l'IHM.
 
@@ -55,7 +55,7 @@ flowchart TD
 
 ---
 
-## 🧩 Détail des Micro-services et Composants
+## Détail des Micro-services et Composants
 
 | Service | Technologie | Rôle & Responsabilité | Port interne | Port hôte |
 | :--- | :--- | :--- | :--- | :--- |
@@ -68,7 +68,7 @@ flowchart TD
 
 ---
 
-## ✨ Fonctionnalités Clés
+## Fonctionnalités Clés
 
 1. **Point d'entrée unique sécurisé (Port 8080) :**
    Tous les services internes (Python, C#, Redis, PostgreSQL) sont isolés sur le réseau Docker privé. Seule l'IHM Nginx est accessible depuis l'extérieur, redirigeant les requêtes `/api/*` vers l'Ambassadeur.
@@ -87,7 +87,7 @@ flowchart TD
 
 ---
 
-## 📁 Arborescence du Projet
+## Arborescence du Projet
 
 ```text
 Projet_QRcode/
@@ -117,7 +117,7 @@ Projet_QRcode/
 
 ---
 
-## 🚀 Installation et Lancement
+## Installation et Lancement
 
 ### Prérequis
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) installé et démarré.
@@ -140,20 +140,20 @@ docker-compose ps
 
 ---
 
-## 🖥️ Utilisation & Tests
+## Utilisation & Tests
 
 Une fois la stack démarrée, ouvrez votre navigateur web à l'adresse :
-👉 **[http://localhost:8080](http://localhost:8080)**
+**[http://localhost:8080](http://localhost:8080)**
 
 Deux modes d'utilisation sont proposés :
-* **📷 Mode Caméra :** Active votre webcam pour analyser le flux vidéo en continu toutes les 1,5 secondes.
+* **Mode Caméra :** Active votre webcam pour analyser le flux vidéo en continu toutes les 1,5 secondes.
   *(Fonctionne sur `localhost` ; les navigateurs bloquent la caméra sans HTTPS sur une IP distante)*.
-* **📁 Mode Image :** Permet de téléverser une image fixe (JPG, PNG, WEBP).
+* **Mode Image :** Permet de téléverser une image fixe (JPG, PNG, WEBP).
   Vous pouvez tester immédiatement ce mode avec les images fournies dans le dossier `picture/` (ex. `code-barre_PC-UPJV_67430(1).jpg` qui est décodé grâce à une rotation à 30°).
 
 ---
 
-## 📡 Endpoints de l'API
+## Endpoints de l'API
 
 Tous les appels transitent par le port **8080** via le reverse proxy Nginx :
 
@@ -164,7 +164,7 @@ Tous les appels transitent par le port **8080** via le reverse proxy Nginx :
 
 ---
 
-## 🛠️ Commandes Utiles de Maintenance
+## Commandes Utiles de Maintenance
 
 * **Afficher les logs en temps réel d'un service précis :**
   ```bash

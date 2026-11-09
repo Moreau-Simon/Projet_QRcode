@@ -1,11 +1,13 @@
+import os
 from flask import Flask, request, jsonify
 import requests
 
 app = Flask(__name__)
 
-JOB_URL = "http://job-python:5000/scan"
-DATA_URL = "http://data-csharp:5000/api/save"
-TIMEOUT = 30  # secondes
+# Récupération dynamique des URLs cibles via variables d'environnement
+JOB_URL = os.getenv("JOB_URL", "http://job-python:5000/scan")
+DATA_URL = os.getenv("DATA_URL", "http://data-csharp:5000/api/save")
+TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))  # secondes
 
 
 @app.route("/api/scan", methods=["POST"])
@@ -31,8 +33,6 @@ def route_scan():
         analyse = result.get("analyse", {})
 
         # 2. Étape 2 du Pipeline : Routage selon le type de code détecté
-        # Le scan d'un QR-Code renvoie les données vers la base associée (via Dataware C#).
-        # Pour un code-barre, l'analyse a été effectuée par le Job Python, et on l'archive également dans la base.
         database_info = None
         try:
             data_response = requests.post(
@@ -65,4 +65,5 @@ def route_scan():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "8000"))
+    app.run(host="0.0.0.0", port=port)
