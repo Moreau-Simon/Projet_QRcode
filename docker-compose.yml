@@ -31,7 +31,7 @@ services:
   # 5. Cache
   redis:
     image: redis:alpine
-    restart: always
+    restart: on-failure
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -41,7 +41,7 @@ services:
   # 6. Base relationnelle
   psql:
     image: postgres:15-alpine
-    restart: always
+    restart: on-failure
     environment:
       POSTGRES_USER: mon_utilisateur
       POSTGRES_PASSWORD: mon_mot_de_passe

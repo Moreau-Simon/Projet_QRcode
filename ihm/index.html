@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lecteur de QR code</title>
+  <title>Lecteur de QR code & Code-barres</title>
   <link rel="stylesheet" href="style.css">
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -18,6 +18,7 @@
     function QrReader() {
       const [mode, setMode] = React.useState("camera");
       const [result, setResult] = React.useState("");
+      const [details, setDetails] = React.useState(null);
       const [error, setError] = React.useState("");
       const [running, setRunning] = React.useState(false);
       const videoRef = React.useRef(null);
@@ -29,24 +30,24 @@
         setRunning(false);
       }, []);
 
-      // Nouvelle fonction : Envoie l'image au backend Python (Ambassadeur)
-      // showErrors = true en mode Image (un seul envoi) ; false en mode caméra (boucle)
+      // Envoie l'image au backend via l'Ambassadeur Python (porté par Nginx en reverse proxy)
       const sendToAPI = async (blob, showErrors = false) => {
         const formData = new FormData();
         formData.append("file", blob, "scan.jpg");
         try {
           const response = await fetch("/api/scan", { method: "POST", body: formData });
-          if (!response.ok) throw new Error("Erreur serveur");
+          if (!response.ok) throw new Error("Erreur serveur (" + response.status + ")");
           const data = await response.json();
           if (data.code) {
             setError("");
             setResult(data.code);
+            setDetails(data);
             stopCamera();
           } else if (showErrors) {
             setError(data.error || "Aucun code détecté.");
           }
         } catch (err) {
-          setError("Impossible de joindre le serveur.");
+          setError("Impossible de joindre le serveur : " + err.message);
         }
       };
 
@@ -59,7 +60,7 @@
         canvas.toBlob((blob) => { if (blob) sendToAPI(blob); }, "image/jpeg");
       }, []);
 
-      // Boucle de capture toutes les 1.5 secondes
+      // Boucle de capture toutes les 1.5 secondes en mode caméra
       React.useEffect(() => {
         if (!running) return;
         const interval = setInterval(captureFrame, 1500);
@@ -67,36 +68,101 @@
       }, [running, captureFrame]);
 
       const startCamera = async () => {
-        stopCamera(); setError(""); setResult("");
+        stopCamera(); setError(""); setResult(""); setDetails(null);
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
           streamRef.current = stream;
           if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
           setRunning(true);
-        } catch (err) { setError("Erreur caméra."); }
+        } catch (err) { setError("Erreur d'accès à la caméra."); }
       };
 
       const readFile = (file) => {
         if (!file) return;
-        stopCamera(); setResult(""); setError("Analyse en cours...");
+        stopCamera(); setResult(""); setDetails(null); setError("Analyse en cours...");
         sendToAPI(file, true);
       };
 
       return h("main", { className: "shell" },
         h("section", { className: "app" },
-          h("h1", null, "Lecteur de QR code via Backend"),
+          h("div", { className: "eyebrow" }, "Pipeline Microservices"),
+          h("h1", null, "Lecteur QR Code & Code-barres"),
+          h("p", { className: "intro" }, "Détection multi-angles avec Job Python, routage Ambassadeur, et persistance PostgreSQL / Redis via Data C#."),
           h("div", { className: "panel" },
             h("div", { className: "tabs" },
-              h("button", { className: "tab", onClick: () => { setMode("camera"); startCamera(); } }, "Caméra"),
-              h("button", { className: "tab", onClick: () => { setMode("image"); stopCamera(); } }, "Image")
+              h("button", {
+                className: "tab",
+                "aria-selected": mode === "camera",
+                onClick: () => { setMode("camera"); startCamera(); }
+              }, "📷 Mode Caméra"),
+              h("button", {
+                className: "tab",
+                "aria-selected": mode === "image",
+                onClick: () => { setMode("image"); stopCamera(); }
+              }, "📁 Mode Fichier Image")
             ),
             h("div", { className: "content" },
               mode === "camera" ? h("div", null,
-                h("video", { ref: videoRef, muted: true, playsInline: true, autoPlay: true, style: { width: "100%", display: running ? "block" : "none" } }),
-                !running && h("button", { onClick: startCamera, className: "button primary" }, "Démarrer la caméra")
-              ) : h("input", { type: "file", accept: "image/*", onChange: (e) => readFile(e.target.files[0]) }),
-              error && h("p", { style: { color: "red" } }, error),
-              result && h("div", { className: "result" }, h("strong", null, "Résultat : "), result)
+                h("div", { className: "camera-box" },
+                  h("video", {
+                    ref: videoRef,
+                    muted: true,
+                    playsInline: true,
+                    autoPlay: true,
+                    style: { display: running ? "block" : "none" }
+                  }),
+                  !running && h("div", { className: "placeholder" }, "Cliquez sur le bouton ci-dessous pour activer la caméra"),
+                  running && h("div", { className: "scan-frame" })
+                ),
+                h("div", { className: "controls" },
+                  !running
+                    ? h("button", { onClick: startCamera, className: "button primary" }, "Activer la caméra")
+                    : h("button", { onClick: stopCamera, className: "button" }, "Arrêter la caméra")
+                )
+              ) : h("div", { className: "upload" },
+                h("div", { className: "upload-icon" }, "⬆"),
+                h("h2", null, "Déposer ou choisir une image"),
+                h("p", { className: "muted" }, "Formats supportés : JPG, PNG, WEBP (codes orientés ou inclinés acceptés)"),
+                h("input", {
+                  type: "file",
+                  accept: "image/*",
+                  className: "button",
+                  style: { marginTop: "12px" },
+                  onChange: (e) => readFile(e.target.files[0])
+                })
+              ),
+              error && h("p", { className: "message error" }, error),
+              result && h("div", { className: "result" },
+                h("div", { className: "result-head" },
+                  h("span", null, "✅ " + (details?.type || "Code") + " détecté"),
+                  details?.database_info?.scan_count && h("span", { className: "small-button" },
+                    "Scans : " + details.database_info.scan_count + " (" + (details.database_info.source || "DB") + ")"
+                  )
+                ),
+                h("div", { className: "result-value" }, h("strong", null, "Valeur : "), result),
+                details?.angle_detecte !== undefined && h("div", { className: "muted", style: { marginTop: "6px", fontSize: "12px" } },
+                  "Angle de lecture : " + details.angle_detecte + "°"
+                ),
+                details?.analyse?.details && Object.keys(details.analyse.details).length > 0 && h("div", {
+                  style: {
+                    marginTop: "12px",
+                    fontSize: "13px",
+                    color: "#344054",
+                    background: "#ffffff",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid #e0e4ed"
+                  }
+                },
+                  h("strong", null, "🔍 Analyse Python du code-barre :"),
+                  h("ul", { style: { margin: "6px 0 0", paddingLeft: "20px" } },
+                    details.analyse.details.origine_gs1 && h("li", null, "Origine GS1 : " + details.analyse.details.origine_gs1),
+                    details.analyse.details.type_usage && h("li", null, "Usage : " + details.analyse.details.type_usage),
+                    details.analyse.details.cle_calculee !== undefined && h("li", null, "Clé de contrôle (Checksum) : " + (details.analyse.est_valide ? "Valide ✓" : "Invalide ✗")),
+                    details.analyse.details.alphanumerique !== undefined && h("li", null, "Format alphanumérique : Conforme")
+                  )
+                )
+              )
             )
           )
         )

@@ -6,7 +6,9 @@ using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Configuration Redis (nom du service "redis" dans le docker-compose)
-var redis = ConnectionMultiplexer.Connect("redis:6379");
+var redisConfig = ConfigurationOptions.Parse("redis:6379");
+redisConfig.AbortOnConnectFail = false; // Ne crashe pas si Redis met quelques secondes à démarrer
+var redis = ConnectionMultiplexer.Connect(redisConfig);
 builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
 
 // 2. Configuration PostgreSQL (nom du service "psql" dans le docker-compose)

@@ -18,28 +18,47 @@ def route_scan():
     files = {"file": (file.filename, file.read(), file.content_type)}
 
     try:
-        # 1. Envoi de l'image au Job Python (analyse / décodage)
+        # 1. Étape 1 du Pipeline : Envoi de l'image au Job Python pour décodage et analyse
         job_response = requests.post(JOB_URL, files=files, timeout=TIMEOUT)
         result = job_response.json()
 
         if result.get("status") != "success":
-            # Aucun code trouvé : réponse 200 pour que l'IHM continue sa boucle de capture
+            # Aucun code trouvé : renvoyer 200 avec code: None pour que l'IHM continue sa boucle caméra
             return jsonify({"code": None, "error": result.get("message")}), 200
 
         code_lu = result.get("data")
+        code_type = result.get("type")
+        analyse = result.get("analyse", {})
 
-        # 2. Envoi de la valeur lue au Dataware C# (Redis + PostgreSQL)
-        data_response = requests.post(DATA_URL, json={"valeur": code_lu}, timeout=TIMEOUT)
+        # 2. Étape 2 du Pipeline : Routage selon le type de code détecté
+        # Le scan d'un QR-Code renvoie les données vers la base associée (via Dataware C#).
+        # Pour un code-barre, l'analyse a été effectuée par le Job Python, et on l'archive également dans la base.
+        database_info = None
+        try:
+            data_response = requests.post(
+                DATA_URL, 
+                json={"valeur": code_lu}, 
+                timeout=TIMEOUT
+            )
+            if data_response.ok:
+                database_info = data_response.json()
+            else:
+                database_info = {"status": "error", "message": f"Erreur DATA: {data_response.status_code}"}
+        except requests.exceptions.RequestException as e:
+            database_info = {"status": "warning", "message": f"Service DATA temporairement injoignable: {e}"}
 
+        # 3. Réponse finale renvoyée à l'IHM
         return jsonify({
-            "code": code_lu,
-            "type": result.get("type"),
             "status": "success",
-            "database_info": data_response.json(),
+            "code": code_lu,
+            "type": code_type,
+            "angle_detecte": result.get("angle_detecte"),
+            "analyse": analyse,
+            "database_info": database_info,
         }), 200
 
     except requests.exceptions.RequestException as e:
-        # Un des services (Job ou DATA) est injoignable
+        # Service Job ou DATA injoignable
         return jsonify({"code": None, "error": f"Service injoignable : {e}"}), 502
     except Exception as e:
         return jsonify({"code": None, "error": str(e)}), 500
