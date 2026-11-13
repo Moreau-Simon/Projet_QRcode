@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using StackExchange.Redis;
@@ -24,11 +25,32 @@ var pgConnString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
     ?? $"Host={psqlHost};Port={psqlPort};Username={psqlUser};Password={psqlPass};Database={psqlDb}";
 builder.Services.AddScoped(_ => new NpgsqlConnection(pgConnString));
 
+// 3. Configuration Swagger / OpenAPI (Jalon J2)
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "DataService API",
+        Version = "v1",
+        Description = "Microservice Data Access C# pour la gestion des QR-Codes et codes-barres (PostgreSQL & Redis)"
+    });
+});
+
 var app = builder.Build();
 
-// 3. Initialisation de la base de données (Vérification / création de la table si nécessaire)
-using (var scope = app.Services.CreateScope())
+// Activation de Swagger et de son interface interactive
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "DataService API v1");
+    c.RoutePrefix = "swagger";
+});
+
+// 4. Initialisation de la base de données (Vérification / création de la table si nécessaire)
+try
+{
+    using var scope = app.Services.CreateScope();
     var conn = scope.ServiceProvider.GetRequiredService<NpgsqlConnection>();
     conn.Open();
     using var cmd = new NpgsqlCommand(@"
@@ -40,10 +62,19 @@ using (var scope = app.Services.CreateScope())
         )", conn);
     cmd.ExecuteNonQuery();
 }
+catch (Exception ex)
+{
+    Console.WriteLine($"[AVERTISSEMENT] Initialisation table : {ex.Message}");
+}
 
-// 4. Endpoint appelé par l'Ambassadeur Python : enregistre CHAQUE scan
+// 5. Endpoint appelé par l'Ambassadeur Python : enregistre CHAQUE scan
 app.MapPost("/api/save", async (ScanRequest req, IConnectionMultiplexer redisClient, NpgsqlConnection pgConn) =>
 {
+    if (string.IsNullOrWhiteSpace(req.Valeur))
+    {
+        return Results.BadRequest(new { status = "error", message = "La valeur du scan ne peut être vide." });
+    }
+
     var db = redisClient.GetDatabase();
     var cacheKey = $"barcode:{req.Valeur}";
 
@@ -63,11 +94,20 @@ app.MapPost("/api/save", async (ScanRequest req, IConnectionMultiplexer redisCli
     await db.StringSetAsync(cacheKey, count, TimeSpan.FromHours(1));
 
     return Results.Ok(new { status = "success", source = "postgres", data = req.Valeur, scan_count = count });
-});
+})
+.WithName("SaveScan")
+.WithSummary("Enregistre un code scanné dans PostgreSQL et met à jour le cache Redis.")
+.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest);
 
-// 5. Consultation d'un code : lecture dans Redis d'abord, sinon PostgreSQL
+// 6. Consultation d'un code : lecture dans Redis d'abord, sinon PostgreSQL
 app.MapGet("/api/scan/{valeur}", async (string valeur, IConnectionMultiplexer redisClient, NpgsqlConnection pgConn) =>
 {
+    if (string.IsNullOrWhiteSpace(valeur))
+    {
+        return Results.BadRequest(new { status = "error", message = "Le paramètre valeur est obligatoire." });
+    }
+
     var db = redisClient.GetDatabase();
     var cacheKey = $"barcode:{valeur}";
 
@@ -90,7 +130,12 @@ app.MapGet("/api/scan/{valeur}", async (string valeur, IConnectionMultiplexer re
     var count = Convert.ToInt32(result);
     await db.StringSetAsync(cacheKey, count, TimeSpan.FromHours(1));
     return Results.Ok(new { status = "success", source = "postgres", data = valeur, scan_count = count });
-});
+})
+.WithName("GetScan")
+.WithSummary("Consulte les informations d'un code (stratégie Cache-Aside : Redis puis PostgreSQL).")
+.Produces(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.Produces(StatusCodes.Status400BadRequest);
 
 // L'API écoute sur le port 5000
 app.Run("http://0.0.0.0:5000");
@@ -99,3 +144,5 @@ public class ScanRequest
 {
     public string Valeur { get; set; } = string.Empty;
 }
+
+public partial class Program { }
